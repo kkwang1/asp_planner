@@ -11,8 +11,8 @@ strong_holds(start, works_for(bob, uk)).
 strong_holds(start, not_suspicious(Person1, Person2)) :- person(Person1), person(Person2).
 strong_notholds(start, knows_content(Person1, Person2)) :- person(Person1), person(Person2).
 strong_notholds(start, has_account(Person)) :- person(Person).
-strong_notholds(start, accessed_lgbtq_content(Person, 1)) :- person(Person).
-strong_notholds(start, recorded_lgbtq_content(Gov, Person, 1)) :- person(Person), gov(Gov).
+strong_notholds(start, accessed_lgbtq_content(Person, I)) :- person(Person), id(I).
+strong_notholds(start, recorded_lgbtq_content(Gov, Person, I)) :- person(Person), gov(Gov), id(I).
 strong_notholds(start, uses_tor(Person)) :- person(Person).
 strong_notholds(start, data_secure(Gov)) :- gov(Gov).
 
@@ -31,10 +31,11 @@ possible(I, action(access_lgbtq_content(Person, I)), al(Person)) :-
 initiates(I, Action, accessed_lgbtq_content(Person, AccTime)) :-
     happens(I, Action, al(Person)),
     Action=action(access_lgbtq_content(Person, AccTime)).
-intends(I, recorded_lgbtq_content(Gov, Person, AccTime), Gov) :- 
+intends(I, recorded_lgbtq_content(Gov, Person, I), Gov) :- 
     gov(Gov),
     happens(I, Action, al(Person)),
-    Action=action(access_lgbtq_content(Person, AccTime)).
+    Action=action(access_lgbtq_content(Person, I)),
+    strong_notholds(I, uses_tor(Person)).
 
 possible(I, action(attend_workshop(Person)), al(Person)) :-
     id(I),
@@ -68,10 +69,13 @@ terminates(I, Action, not_suspicious(Govworker, Person)) :-
     happens(I, Action, al(Govworker)),
     Action=action(see_recorded_lgbtq_content(Govworker, Person)).
 
+% :- not Expr, Expr = 1 { happens(I, action(attend_workshop(alice)), al(alice)) : id(I) }.
 
-#const tmax=15.
+#const tmax=10.
 
 #show happens/3.
 #show edge/2.
 #show satisfies/2.
 #show intends/3.
+#show strong_holds/2.
+#show strong_notholds/2.
