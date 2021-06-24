@@ -1,40 +1,54 @@
 %* This file describes a narrative space relating to internet surveillence,
    inspired by the UK's Investigatory Powers Act. 
 
-   Alice is questioning and would like to explore queer spaces online, without
-   anyone else knowing. Bob, Alice's father, wants to know about Alice's
+   Alice is questioning and would like to explore queer spaces on social media,
+   without anyone else knowing. Bob, Alice's father, wants to know about Alice's
    online activity. Alice and Bob are in the UK, which records all internet
    activity in the country, and Bob can potentially access this information as a
    government worker.
 *%
 
-person(alice;bob).
+%% Facts
+
+person(alice; bob).
 gov(uk).
+identity(questioning; none).
+content_type(queer; other).
 
 
 %% Initial State
 
-% Alice would like to access LGBTQ content at least once, and she would not want
-% Bob to know
-1 {intends(start, accessed_lgbtq_content(alice, AccTime), alice) : id(AccTime)}.
-intends(start, not_suspicious(bob, alice), alice).
-
-% Bob would like to know what Alice does on the Internet
-intends(start, knows_content(bob, alice), bob).
-
 % These properties hold at the start, and they continue to hold until they are
 % terminated by an action:
 strong_holds(start, works_for(bob, uk)).
-strong_holds(start, not_suspicious(Person1, Person2)) :- person(Person1), person(Person2).
+strong_holds(start, has_identity(alice, questioning)).
+strong_holds(start, has_identity(bob, none)).
 
 % These properties do not hold at the start, and they continue to not hold until
 % they are initiated by an action:
-strong_notholds(start, knows_content(Person1, Person2)) :- person(Person1), person(Person2).
+strong_notholds(start, outed_to(QueerPerson, OtherPerson)) :-
+    person(QueerPerson),
+    person(OtherPerson),
+    QueerPerson != OtherPerson,
+    strong_holds(start, has_identity(QueerPerson, Identity)) :
+        identity(Identity),
+        Identity != none.
+strong_notholds(start, knows_internet_usage(Person1, Person2)) :-
+    person(Person1),
+    person(Person2),
+    Person1 != Person2.
 strong_notholds(start, has_account(Person)) :- person(Person).
-strong_notholds(start, accessed_lgbtq_content(Person, I)) :- person(Person), id(I).
-strong_notholds(start, recorded_lgbtq_content(Gov, Person, I)) :- person(Person), gov(Gov), id(I).
-strong_notholds(start, uses_tor(Person)) :- person(Person).
+strong_notholds(start, accessed_internet(Person, Type, I)) :-
+    person(Person),
+    content_type(Type),
+    id(I).
+strong_notholds(start, recorded_internet_access(Gov, Person, Type, I)) :-
+    gov(Gov), 
+    person(Person),
+    content_type(Type),
+    id(I).
 strong_notholds(start, data_secure(Gov)) :- gov(Gov).
+strong_notholds(start, uses_tor(Person)) :- person(Person).
 
 
 %% Pool of Possible Actions
@@ -49,21 +63,22 @@ initiates(I, Action, has_account(Person)) :-
     happens(I, Action, al(Person)),
     Action=action(create_account(Person)).
 
-% A person can access LGBTQ content on social media
+% A person can access content of any type on social media
 %   Preconditions: the person has a social media account
-%   Effects: the person has now accessed LGBTQ content, and the government now
-%   intends to record their use of the internet
-possible(I, action(access_lgbtq_content(Person, I)), al(Person)) :-
+%   Effects: the person has now accessed queer content, and, if they don't use
+%   Tor, the government now intends to record their use of the internet
+possible(I, action(access_content(Person, Type, I)), al(Person)) :-
     id(I),
     person(Person),
+    content_type(Type),
     strong_holds(I, has_account(Person)).
-initiates(I, Action, accessed_lgbtq_content(Person, AccTime)) :-
+initiates(I, Action, accessed_internet(Person, Type, I)) :-
     happens(I, Action, al(Person)),
-    Action=action(access_lgbtq_content(Person, AccTime)).
-intends(I, recorded_lgbtq_content(Gov, Person, I), Gov) :- 
+    Action=action(access_content(Person, Type, I)).
+intends(I, recorded_internet_access(Gov, Person, Type, I), Gov) :- 
     gov(Gov),
     happens(I, Action, al(Person)),
-    Action=action(access_lgbtq_content(Person, I)),
+    Action=action(access_content(Person, Type, I)),
     strong_notholds(I, uses_tor(Person)).
 
 % A person can attend a privacy workshop
@@ -80,41 +95,62 @@ initiates(I, Action, uses_tor(Person)) :-
 %   Preconditions: the person accessed the internet and was not using Tor at the
 %   time
 %   Effects: the internet access is recorded
-possible(I, action(record_lgbtq_content(Gov, Person, AccTime)), al(Gov)) :-
+possible(I, action(record_internet_access(Gov, Person, Type, AccI)), al(Gov)) :-
     id(I),
     gov(Gov),
     person(Person),
-    strong_notholds(AccTime, uses_tor(Person)),
-    strong_holds(I, accessed_lgbtq_content(Person, AccTime)).
-initiates(I, Action, recorded_lgbtq_content(Gov, Person, AccTime)) :-
+    content_type(Type),
+    id(AccI),
+    strong_notholds(AccI, uses_tor(Person)),
+    strong_holds(I, accessed_internet(Person, Type, AccI)).
+initiates(I, Action, recorded_internet_access(Gov, Person, Type, AccI)) :-
     happens(I, Action, al(Gov)),
-    Action=action(record_lgbtq_content(Gov, Person, AccTime)).
+    Action=action(record_internet_access(Gov, Person, Type, AccI)).
 
 % A person can see the recorded internet use of another person
 %   Preconditions: the victim's usage was recorded, the initiator works for the
 %   government that recorded the access, and this government does not keep the
 %   data secure
-%   Effects: the initiator knows how the victim uses the internet, and they
-%   become suspicious if the access was LGBTQ-related.
-possible(I, action(see_recorded_lgbtq_content(Govworker, Person)), al(Govworker)) :-
+%   Effects: the initiator knows how the victim uses the internet, which outs
+%   the victim if they accessed queer content. 
+possible(I, action(see_recorded_internet_usage(Govworker, Victim, Type)), al(Govworker)) :-
     id(I),
-    person(Person),
     person(Govworker),
+    person(Victim),
+    Govworker != Victim,
     gov(Gov),
     strong_holds(I, works_for(Govworker, Gov)),
     strong_notholds(I, data_secure(Gov)),
-    strong_holds(I, recorded_lgbtq_content(Gov, Person, _)).
-initiates(I, Action, knows_content(Govworker, Person)) :-
+    content_type(Type),
+    strong_holds(I, recorded_internet_access(Gov, Victim, Type, _)).
+initiates(I, Action, knows_internet_usage(Govworker, Victim)) :-
     happens(I, Action, al(Govworker)),
-    Action=action(see_recorded_lgbtq_content(Govworker, Person)).
-terminates(I, Action, not_suspicious(Govworker, Person)) :-
+    Action=action(see_recorded_internet_usage(Govworker, Victim, Type)).
+initiates(I, Action, outed_to(Victim, Govworker)) :-
     happens(I, Action, al(Govworker)),
-    Action=action(see_recorded_lgbtq_content(Govworker, Person)).
+    Action=action(see_recorded_internet_usage(Govworker, Victim, queer)).
 
 
 %% Query Specification
 
-% :- not Expr, Expr = 1 { happens(I, action(attend_workshop(alice)), al(alice)) : id(I) }.
+% Alice's intentions: access queer content at least once, without anyone else
+% knowing
+1 { intends(start, accessed_internet(alice, queer, I), alice) : id(I) }.
+intends(start, never_holds(outed_to(alice, bob)), alice).
+
+% Bob's intentions: know what Alice does on the Internet
+intends(start, knows_internet_usage(bob, alice), bob).
+
+% Alice specifically wants to access queer content and not get outed in a single
+% timeline
+:- satisfies(I1, intention(start, never_holds(outed_to(alice, bob))), alice),
+   satisfies(I2, intention(start, accessed_internet(alice, queer, I2)), alice),
+   concludes(C1, I1),
+   concludes(C2, I2),
+   C1 != C2.
+
+% make sure alice attends the workshop at least once
+1 { happens(I, action(attend_workshop(alice)), al(alice)) : id(I) }.
 
 % Number of vertices in the resulting graph:
 #const tmax=10.
@@ -126,3 +162,4 @@ terminates(I, Action, not_suspicious(Govworker, Person)) :-
 #show intends/3.
 #show strong_holds/2.
 #show strong_notholds/2.
+#show concludes/2.

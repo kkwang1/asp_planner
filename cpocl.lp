@@ -131,6 +131,12 @@ satisfies(I2, intention(I1, X, A)) :-
         after(I3, I1),
         before(I3, I2).
 
+satisfies(Id2, intention(Id1, never_holds(Fluent), Actor)) :-
+    intends(Id1, never_holds(Fluent), Actor),
+    concludes(Id2, Id1),
+    strong_notholds(I, Fluent):
+        concludes(Id2, I).
+
 % All intended fluents must hold at some point after they're intended
 :-  intends(I1, X, A),
     not satisfies(_, intention(I1, X, A)).
