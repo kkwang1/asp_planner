@@ -143,17 +143,19 @@ intends(start, knows_internet_usage(bob, alice), bob).
 
 % Alice specifically wants to access queer content and not get outed in a single
 % timeline
-:- satisfies(I1, intention(start, never_holds(outed_to(alice, bob))), alice),
-   satisfies(I2, intention(start, accessed_internet(alice, queer, I2)), alice),
-   concludes(C1, I1),
-   concludes(C2, I2),
-   C1 != C2.
+% TODO
+:- id(I),
+   satisfies(I, intention(start, accessed_internet(alice, queer, I)), alice),
+   1 { not satisfies(C, intention(start, never_holds(outed_to(alice, bob))), alice) : concludes(C, I) }.
 
 % make sure alice attends the workshop at least once
-1 { happens(I, action(attend_workshop(alice)), al(alice)) : id(I) }.
+ 1 { happens(I, action(attend_workshop(alice)), al(alice)) : id(I) }.
+
+% Use total order
+totalorder.
 
 % Number of vertices in the resulting graph:
-#const tmax=10.
+#const tmax=8.
 
 % Information to be displayed: 
 #show happens/3.
