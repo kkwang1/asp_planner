@@ -8,7 +8,7 @@ echo "    - You can press Ctrl+C to stop the optimization once at least one answ
 sleep 2
 echo
 echo
-echo "################ RUNNING betrayal.lp #################"
+echo "################ RUNNING rpgenforcesnames.lp #################"
 echo
 CORES=$(grep -c ^processor /proc/cpuinfo)
 if [ -z "$CORES" ]; then
