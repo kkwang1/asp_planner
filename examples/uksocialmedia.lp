@@ -11,8 +11,11 @@
 %% Facts
 
 person(alice; bob).
+queer(alice).
+:- queer(Person), not person(Person). % Sanity check: all queer people are people
+
 gov(uk).
-identity(questioning; none).
+
 content_type(queer; other).
 
 
@@ -21,80 +24,78 @@ content_type(queer; other).
 % These properties hold at the start, and they continue to hold until they are
 % terminated by an action:
 strong_holds(start, works_for(bob, uk)).
-strong_holds(start, has_identity(alice, questioning)).
-strong_holds(start, has_identity(bob, none)).
 
 % These properties do not hold at the start, and they continue to not hold until
 % they are initiated by an action:
-strong_notholds(start, outed_to(QueerPerson, OtherPerson)) :-
-    person(QueerPerson),
-    person(OtherPerson),
-    QueerPerson != OtherPerson,
-    strong_holds(start, has_identity(QueerPerson, Identity)) :
-        identity(Identity),
-        Identity != none.
-strong_notholds(start, knows_internet_usage(Person1, Person2)) :-
-    person(Person1),
-    person(Person2),
-    Person1 != Person2.
-strong_notholds(start, has_account(Person)) :- person(Person).
-strong_notholds(start, accessed_internet(Person, Type, I)) :-
-    person(Person),
-    content_type(Type),
-    id(I).
-strong_notholds(start, recorded_internet_access(Gov, Person, Type, I)) :-
-    gov(Gov), 
-    person(Person),
-    content_type(Type),
-    id(I).
 strong_notholds(start, data_secure(Gov)) :- gov(Gov).
 strong_notholds(start, uses_tor(Person)) :- person(Person).
 
-
 %% Pool of Possible Actions
 
-% A person can create a social media account
-%   Preconditions: None
-%   Effects: the person now has an account
+%*  create_account(Person)
+    A person can create a social media account.
+
+    Preconditions: None
+
+    Effect: the person now has an account
+*%
 possible(I, action(create_account(Person)), al(Person)) :-
     id(I),
     person(Person).
+
 initiates(I, Action, has_account(Person)) :-
     happens(I, Action, al(Person)),
     Action=action(create_account(Person)).
 
-% A person can access content of any type on social media
-%   Preconditions: the person has a social media account
-%   Effects: the person has now accessed queer content, and, if they don't use
-%   Tor, the government now intends to record their use of the internet
+%*  access_content(Person, Type, I)
+    A person can access content of any type on social media at a moment in time.
+
+    Preconditions: the person has a social media account
+
+    Effect: the person has now accessed queer content
+    
+    Effect: if they don't use Tor, the government now intends to record their
+    use of the internet
+*%
 possible(I, action(access_content(Person, Type, I)), al(Person)) :-
     id(I),
     person(Person),
     content_type(Type),
     strong_holds(I, has_account(Person)).
+
 initiates(I, Action, accessed_internet(Person, Type, I)) :-
     happens(I, Action, al(Person)),
     Action=action(access_content(Person, Type, I)).
+
 intends(I, recorded_internet_access(Gov, Person, Type, I), Gov) :- 
-    gov(Gov),
     happens(I, Action, al(Person)),
     Action=action(access_content(Person, Type, I)),
+    gov(Gov),
     strong_notholds(I, uses_tor(Person)).
 
-% A person can attend a privacy workshop
-%   Preconditions: None
-%   Effects: the person now uses Tor
+%*  attend_workshop(Person)
+    A person can attend a privacy workshop.
+
+    Preconditions: None
+
+    Effect: the person now uses Tor
+*%
 possible(I, action(attend_workshop(Person)), al(Person)) :-
     id(I),
     person(Person).
+
 initiates(I, Action, uses_tor(Person)) :-
     happens(I, Action, al(Person)),
     Action=action(attend_workshop(Person)).
 
-% A government can record a person's use of the internet
-%   Preconditions: the person accessed the internet and was not using Tor at the
-%   time
-%   Effects: the internet access is recorded
+%*  record_internet_access(Gov, Person, Type, AccI)
+    A government can record a person's use of the internet.
+
+    Preconditions: the person accessed the internet and was not using Tor at the
+    time
+
+    Effects: the internet access is recorded
+*%
 possible(I, action(record_internet_access(Gov, Person, Type, AccI)), al(Gov)) :-
     id(I),
     gov(Gov),
@@ -103,16 +104,24 @@ possible(I, action(record_internet_access(Gov, Person, Type, AccI)), al(Gov)) :-
     id(AccI),
     strong_notholds(AccI, uses_tor(Person)),
     strong_holds(I, accessed_internet(Person, Type, AccI)).
+
 initiates(I, Action, recorded_internet_access(Gov, Person, Type, AccI)) :-
     happens(I, Action, al(Gov)),
     Action=action(record_internet_access(Gov, Person, Type, AccI)).
 
-% A person can see the recorded internet use of another person
-%   Preconditions: the victim's usage was recorded, the initiator works for the
-%   government that recorded the access, and this government does not keep the
-%   data secure
-%   Effects: the initiator knows how the victim uses the internet, which outs
-%   the victim if they accessed queer content. 
+%*  see_recorded_internet_usage(Govworker, Victim, Type)
+    A person who works with government data can see the recorded internet use
+    of another person.
+
+    Preconditions: the victim's usage was recorded, the initiator works for the
+    government that recorded the access, and this government does not keep the
+    data secure
+
+    Effect: the initiator knows how the victim uses the internet
+    
+    Effect: if the victim had previously accessed queer content, they become
+    outed to the intiator. 
+*%
 possible(I, action(see_recorded_internet_usage(Govworker, Victim, Type)), al(Govworker)) :-
     id(I),
     person(Govworker),
@@ -123,9 +132,11 @@ possible(I, action(see_recorded_internet_usage(Govworker, Victim, Type)), al(Gov
     strong_notholds(I, data_secure(Gov)),
     content_type(Type),
     strong_holds(I, recorded_internet_access(Gov, Victim, Type, _)).
+
 initiates(I, Action, knows_internet_usage(Govworker, Victim)) :-
     happens(I, Action, al(Govworker)),
     Action=action(see_recorded_internet_usage(Govworker, Victim, Type)).
+
 initiates(I, Action, outed_to(Victim, Govworker)) :-
     happens(I, Action, al(Govworker)),
     Action=action(see_recorded_internet_usage(Govworker, Victim, queer)).
@@ -144,9 +155,11 @@ intends(start, knows_internet_usage(bob, alice), bob).
 % Alice specifically wants to access queer content and not get outed in a single
 % timeline
 % TODO
+%*
 :- id(I),
    satisfies(I, intention(start, accessed_internet(alice, queer, I)), alice),
-   1 { not satisfies(C, intention(start, never_holds(outed_to(alice, bob))), alice) : concludes(C, I) }.
+   not satisfies(C, intention(start, never_holds(outed_to(alice, bob))), alice) : concludes(C, I).
+*%
 
 % make sure alice attends the workshop at least once
  1 { happens(I, action(attend_workshop(alice)), al(alice)) : id(I) }.
@@ -164,4 +177,3 @@ totalorder.
 #show intends/3.
 #show strong_holds/2.
 #show strong_notholds/2.
-#show concludes/2.
