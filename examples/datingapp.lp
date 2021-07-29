@@ -31,9 +31,6 @@ account_name(legalname; anonymous).
 
 %% Initial State
 
-% These properties hold at the start, and they continue to hold until they are
-% terminated by an action:
-
 % These properties do not hold at the start, and they continue to not hold until
 % they are initiated by an action:
 strong_holds(start, dating(alice, bob)).
@@ -62,6 +59,9 @@ family(Person1, Person2) :- family(Person2, Person1).
 strong_holds(start, knows(Person1, Person2)) :- family(Person1, Person2).
 strong_holds(I, knows(Person1, Person2)) :-
     strong_holds(I, dating(Person1, Person2)).
+
+% You cannot know yourself
+:- strong_holds(I, knows(Person, Person)), id(I), person(Person).
 
 %% Pool of Possible Actions
 
@@ -106,6 +106,8 @@ possible(I, action(introduce_date(Person1, Date, Person2)), al(Person1)) :-
     person(Person1),
     person(Date),
     person(Person2),
+    Person1 != Person2,
+    Date != Person2,
     strong_holds(I, dating(Person1, Date)),
     strong_holds(I, knows(Person1, Person2)),
     strong_holds(I, knows(Person2, Person1)),
@@ -134,6 +136,8 @@ initiates(I, Action, knows_dating(Person2, Person1, Date)) :-
 
     Effect: If the person used their legal name, we assume they filled out
     their dating profile accurately. 
+
+    Effect: the dating app intends to suggest a match to the person
 *%
 possible(I, action(create_account(Name, Person, Company)), al(Person)) :-
     id(I),
@@ -151,6 +155,10 @@ initiates(I, Action, displays_personal_info(Person, Company)) :-
     Action=action(create_account(legalname, Person, Company)),
     dating_app_company(Company).
 
+1 { intends(I, suggested_match(Company, Person, Match), Company) : person(Match) } :-
+    happens(I, Action, al(Person)),
+    Action=action(create_account(Name, Person, Company)).
+
 %*  suggest_match(Company, Person1, Person2)
     A dating app can suggest a match, Person2, to Person1
 
@@ -159,13 +167,42 @@ initiates(I, Action, displays_personal_info(Person, Company)) :-
 
     Effect: The app has now suggested this match to Person1
 
-    Effect: Person1 now knows Person2 uses the app
+    Effect: If Person2 displayed real information about themselves, Person1 now
+    knows Person2 is trying to find a date
     
-    Effect: if Person1 knows Person2 is dating someone else, and they know
-    Person2, Person1 now intends to accuse Person2 of cheating
+    Effect: If Person1 knows Person2 is trying to find a date, Person1 knows
+    Person2 is dating someone else, and they know Person2, Person1 now intends
+    to accuse Person2 of cheating
 *%
+possible(I, action(suggest_match(Company, Person1, Person2)), al(Company)) :-
+    id(I),
+    dating_app_company(Company),
+    person(Person1),
+    person(Person2),
+    Person1 != Person2,
+    strong_holds(I, has_account(_, Person1, Company)),
+    strong_holds(I, has_account(_, Person2, Company)),
+    strong_holds(I, at_location(Person1, Location)),
+    strong_holds(I, at_location(Person2, Location)),
+    not strong_holds(I, suggested_match(Company, Person1, Person2)).
 
-%*  see_profile(Company, Person1, Person2)
+initiates(I, Action, suggested_match(Company, Person1, Person2)) :-
+    happens(I, Action, al(Company)),
+    Action=action(suggest_match(Company, Person1, Person2)).
+
+initiates(I, Action, knows_finding_date(Person1, Person2)) :-
+    happens(I, Action, al(Company)),
+    Action=action(suggest_match(Company, Person1, Person2)),
+    strong_holds(I, displays_personal_info(Person2, Company)).
+
+intends(I, accused_of_cheating(Person1, Person2), Person1) :-
+    happens(I, Action, al(Company)),
+    Action=action(suggest_match(Company, Person1, Person2)),
+    strong_holds(I, displays_personal_info(Person2, Company)),
+    strong_holds(I, knows(Person1, Person2)),
+    strong_holds(I, knows_dating(Person1, Person2, _)).
+
+%*  see_profile(Person1, Person2, Company)
     Person1 can look at Person2's dating profile if the dating app suggested
     the match to Person1
 
@@ -173,12 +210,37 @@ initiates(I, Action, displays_personal_info(Person, Company)) :-
 
     Effect: Person1 now knows info on Person2's dating profile
 
-    Effect: we will assume that Person2 put their sexual orientation on their
-    dating profile, so Person2 is outed to Person1 if they aren't straight
+    Effect: If Person2 used real personal info, we will assume that their
+    dating profile outs them to Person1 if they're queer
 
     Effect: if Person2 has been outed, Person1 is queerphobic, and the
     conditions have been met, Person1 now intends to harass Person2 in real life
 *%
+possible(I, action(see_profile(Person1, Person2, Company)), al(Person1)) :-
+    id(I),
+    person(Person1),
+    person(Person2),
+    Person1 != Person2,
+    dating_app_company(Company),
+    strong_holds(I, suggested_match(Company, Person1, Person2)).
+
+initiates(I, Action, knows_profile(Person1, Person2, Company)) :-
+    happens(I, Action, al(Person1)),
+    Action=action(see_profile(Person1, Person2, Company)).
+
+initiates(I, Action, outed_to(Person2, Person1)) :-
+    happens(I, Action, al(Person1)),
+    Action=action(see_profile(Person1, Person2, Company)),
+    queer(Person2).
+
+intends(I, harassed_irl(Person1, Person2), Person1) :-
+    happens(I, Action, al(Person1)),
+    Action=action(see_profile(Person1, Person2, Company)),
+    queer(Person2),
+    queerphobic(Person1),
+    strong_holds(I, at_location(Person1, Location)),
+    strong_holds(I, at_location(Person2, Location)),
+    strong_holds(I, knows(Person1, Person2)).
 
 %*  accuse_of_cheating(Accuser, Accused)
     Someone can accuse another person of cheating
@@ -188,6 +250,17 @@ initiates(I, Action, displays_personal_info(Person, Company)) :-
 
     Effect: the Accuser has now accused the Accused
 *%
+possible(I, action(accuse_of_cheating(Accuser, Accused)), al(Accuser)) :-
+    id(I),
+    person(Accuser),
+    person(Accused),
+    Accuser != Accused,
+    strong_holds(I, knows(Accuser, Accused)),
+    strong_holds(I, knows_dating(Accuser, Accused, _)).
+
+initiates(I, Action, accused_of_cheating(Accuser, Accused)) :-
+    happens(I, Action, al(Accuser)),
+    Action=action(accuse_of_cheating(Accuser, Accused)).
 
 %*  harass_irl(Harasser, Victim)
     A person can harass another person in real life
@@ -196,22 +269,41 @@ initiates(I, Action, displays_personal_info(Person, Company)) :-
 
     Effect: they have now been harassed in real life
 *%
+possible(I, action(harass_irl(Harasser, Victim)), al(Harasser)) :-
+    id(I),
+    person(Harasser),
+    person(Victim),
+    Harasser != Victim, 
+    strong_holds(I, at_location(Harasser, Location)),
+    strong_holds(I, at_location(Victim, Location)),
+    strong_holds(I, knows(Harasser, Victim)),
+    strong_holds(I, knows(Victim, Harasser)).
+
+initiates(I, Action, harassed_irl(Harasser, Victim)) :-
+    happens(I, Action, al(Harasser)),
+    Action=action(harass_irl(Harasser, Victim)).
 
 %% Query Specification
 
 % alice and bob both intend to use tinder
 intends(start, has_account(legalname, alice, tinder), alice).
 intends(start, has_account(legalname, bob, tinder), bob).
+intends(start, has_account(legalname, carol, tinder), carol).
 
 % alice and bob both intend for carol to know they're dating
 intends(start, knows_dating(carol, bob, alice), alice).
 intends(start, knows_dating(carol, bob, alice), bob).
 
+% look for a solution that contains one person who intends to harass another
+% person irl
+:- not 1 { intends(I, harassed_irl(Person1, Person2), Person1) :
+           id(I), person(Person1), person(Person2) }.
+
 % Use total order
 totalorder.
 
 % Number of vertices in the resulting graph:
-#const tmax=7.
+#const tmax=12.
 
 % Information to be displayed:
 #show happens/3.
